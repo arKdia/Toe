@@ -14,6 +14,7 @@ import java.util.Optional;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import javafx.application.Application;
+import javafx.application.Platform;
 import javafx.event.ActionEvent;
 import javafx.event.EventHandler;
 import javafx.scene.Scene;
@@ -35,11 +36,12 @@ import javax.swing.ImageIcon;
  *
  * @author Mario
  */
-public class TicTacClient extends Application {
+public class TicTacClient extends Application{
     private Label messagelabel;
     GridPane pane;
     Button[] buttonList;
     Button b;
+    Scene scene;
     
     private Socket socket;
     private static int PORT = 8901;
@@ -48,13 +50,14 @@ public class TicTacClient extends Application {
     
     char mark = ' ';
     char opp  = ' ';
+    char myMark = ' ';
     
     String response;
+    String serverAddress;
     
  
     public void startNetBoard(String serverAddress) throws Exception {
        // --Network--
-       //String serverAddress;
        //System.out.println("Where would you like to play?[localhost or IP]");
        socket = new Socket(serverAddress, PORT);
        in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
@@ -63,7 +66,7 @@ public class TicTacClient extends Application {
        // --GUI--
        startGUI();
 
-    }
+    } 
     
     public void startGUI(){
        messagelabel = new Label();
@@ -93,44 +96,100 @@ public class TicTacClient extends Application {
     
     @Override
     public void start(Stage primaryStage) {
-        
-        String serverAddress=" ";
-        
-        TextInputDialog dialog = new TextInputDialog("localhost");
-        dialog.setTitle("Welcome to TicTacToe");
-        dialog.setHeaderText(null);
-        dialog.setContentText("How would you like to play? <localhost or IP>");
-        Optional<String> result = dialog.showAndWait();
-        if (result.isPresent()){
-            serverAddress = result.get();
-        }
-        
         try {
             startNetBoard(serverAddress);
         } catch (Exception ex) {
             System.err.println("Err creating network-board: " + ex);
         }
        
-        try {
-            response = in.readLine();
-            if (response.startsWith("WELCOME")) {
-                mark = response.charAt(8);
-                opp = (mark == 'X' ? 'O' : 'X');
-                System.out.println("this user is: " + mark);
+        new Thread(new Runnable() {
+            public void run() {
+                try {
+                    response = in.readLine();
+                    if (response.startsWith("WELCOME")) {
+                        myMark = mark = response.charAt(8);
+                        opp = (mark == 'X' ? 'O' : 'X');
+                        System.out.println("this user is: " + mark);
+                        //messagelabel.setText(response);
+                    }
+                    while (true) {
+                            response = in.readLine();
+                            if (response.startsWith("VALID_MOVE")){
+                                updateLabel(response);
+                                updateButton(Character.toString(mark));
+                                System.out.printf("\nResponse: %s", response);
+                            }
+                            else if (response.startsWith("OPPONENT_MOVED")){
+                                int loc = Integer.parseInt(response.substring(15));
+                                b = (Button) buttonList[loc];
+                                updateButton(Character.toString(opp));
+                                System.out.printf("\nResponse: %s", response);
+                                updateLabel("Opponent moved, your turn");
+                            }
+                            else if (response.startsWith("VICTORY")){
+                                updateLabel("You Win!");
+                                break;
+                            }
+                            else if (response.startsWith("DEFEAT")){
+                                updateLabel("you Lose");
+                                break;
+                            }
+                            else if (response.startsWith("TIE")){
+                                updateLabel("Tie");
+                                break;
+                            }
+                            else if (response.startsWith("MESSAGE")){
+                                updateLabel(response.substring(8));
+                                //System.out.printf("\nResponse: %s", response);
+                            }
+                    }
+                    out.println("QUIT");
+                } catch (IOException ex) {
+                    System.err.println("Error reading response " + ex);
+                } finally {
+                    try {socket.close();} catch (IOException e) {}
+                }
             }
-        } catch (Exception ex) {
-            System.err.println("Err communication play()" + ex);
-        }
-        
-        primaryStage.setTitle("Tic Tac Toe - Player: " + mark);
+        }).start();
+
+        primaryStage.setTitle("-> Player - Tic Tac Toe ");
         primaryStage.getIcons().add(new Image(getClass().getResourceAsStream(mark == 'X' ? "x.png" : "o.png")));
-        Scene scene = new Scene(pane, 300, 320);
+        primaryStage.setResizable(false);
+        scene = new Scene(pane, 290, 310);
         primaryStage.setScene(scene);
         scene.getStylesheets().add(TicTacClient.class.getResource("toe.css").toExternalForm());
         primaryStage.show();
-   
     }
     
+    protected void updateLabel(String message) {
+        Runnable command = new Runnable() {
+            @Override
+            public void run() {
+                messagelabel.setText(" "+message);
+            }
+        };
+        if (Platform.isFxApplicationThread()) {
+            command.run();
+        } else {
+            Platform.runLater(command);
+        }
+
+    }
+    
+    protected void updateButton(String message) {
+        Runnable command = new Runnable() {
+            @Override
+            public void run() {
+                b.setText(message);
+            }
+        };
+        if (Platform.isFxApplicationThread()) {
+            command.run();
+        } else {
+            Platform.runLater(command);
+        }
+    }
+
     public boolean playAgain(){
         Alert alert = new Alert(AlertType.CONFIRMATION, "Another match?",
                       ButtonType.YES, ButtonType.NO);
@@ -142,86 +201,27 @@ public class TicTacClient extends Application {
         if (result.get() == ButtonType.YES)
             return true;
         return false;
-        
-        //response = 
     }
     
-    Thread t = new Thread(new Runnable() {
-        @Override
-        public void run() {
-             
-            
-            
-        }
-    });
+    
     
     final EventHandler<ActionEvent> myHandler = new EventHandler<ActionEvent>() {
-        //char token = ' ';
-        //boolean winner = false;
 
         @Override
         public void handle(ActionEvent event) {
-            try {
-                b = (Button) event.getSource();
-                //b1 = (Button) event.getSource();
-                
-                //b.setDisable(true);
-                System.out.printf("\nMove: %d\n", Integer.parseInt(b.getId()));
-                out.println("MOVE "+ Integer.parseInt(b.getId()));
-                
-                try {
-                    response = in.readLine();
-                } catch (IOException ex) {
-                    System.err.println("Error reading response " + ex);
-                }
-                System.out.printf("\nResponse: %s", response);
-                //messagelabel.setText(response);
-                
-                if (response.startsWith("VALID_MOVE")){
-                    messagelabel.setText("Valid move, please wait");
-                    //System.out.println("Valid move, please wait");
-                    b.setText(Character.toString(mark));
-                } else if (response.startsWith("OPPONENT_MOVED")){
-                    int loc = Integer.parseInt(response.substring(15));
-                    buttonList[loc].setText(Character.toString(opp));
-                    messagelabel.setText("Opponent moved, your turn");
-                } else if (response.startsWith("VICTORY")){
-                    messagelabel.setText("You win");
-                    /*if(playAgain())
-                       startGUI();
-                    else
-                        out.println("QUIT");*/
-                    return;
-                } /*else if(response.startsWith("DEFEAT")){
-                    messagelabel.setText("You lose");
-                    return;
-                } else if (response.startsWith("TIE")) {
-                    messagelabel.setText("You tied");
-                    return;
-                } else if (response.startsWith("MESSAGE")) {
-                    messagelabel.setText(response.substring(8));
-                }
-                out.println("QUIT");*/
-            } finally {
-                /*try {
-                    //socket.close();
-                } catch (IOException ex) {
-                    System.err.println("err closing socket: " +  ex);
-                }*/
-            }
-            
+            b = (Button) event.getSource();
+            //System.out.printf("\nMove: %d\n", Integer.parseInt(b.getId()));
+            out.println("MOVE "+ Integer.parseInt(b.getId()));
         }
     };
     
-
-     /**
+    /**
      * @param args the command line arguments
      */
     public static void main(String[] args) {
-        //String serverAddress = (args.length == 0) ? "localhost" : args[1];
         TicTacClient tic = new TicTacClient();
-        tic.t.start();
+        tic.serverAddress = (args.length == 0) ? "localhost" : args[1];
+
         launch(args);
     }
-    
 }
