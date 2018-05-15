@@ -30,6 +30,7 @@ import javafx.scene.layout.StackPane;
 import javafx.scene.text.Font;
 import javafx.scene.text.FontWeight;
 import javafx.stage.Stage;
+import javafx.stage.WindowEvent;
 import javax.swing.ImageIcon;
 
 /**
@@ -96,6 +97,14 @@ public class TicTacClient extends Application{
     
     @Override
     public void start(Stage primaryStage) {
+        primaryStage.setOnCloseRequest(new EventHandler<WindowEvent>() {
+        @Override
+        public void handle(WindowEvent e) {
+            Platform.exit();
+            System.exit(0);
+        }
+        });
+        
         try {
             startNetBoard(serverAddress);
         } catch (Exception ex) {
